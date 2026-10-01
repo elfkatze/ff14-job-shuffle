@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FF14 ジョブシャッフル抽選</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@700&family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --panel2:#e4e9f0; --ink:#1a2233; --sub:#5b6577; --line:#cdd4df;
+  --accent:#1c8aa1; --accent-ink:#ffffff;
+  --tank:#2f6fd0; --heal:#2a9459; --dps:#c43d45; --any:#94752a;
+  --warn-bg:#fff1d6; --warn-ink:#6f4400;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#171c27; --panel:#212837; --panel2:#2b3345; --ink:#e9edf4; --sub:#9aa5b8; --line:#384156;
+    --accent:#4cc3d9; --accent-ink:#0c1a20;
+    --tank:#6a9ef2; --heal:#4fc683; --dps:#ef6970; --any:#d7b45a;
+    --warn-bg:#3b2f16; --warn-ink:#f5cf7a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#171c27; --panel:#212837; --panel2:#2b3345; --ink:#e9edf4; --sub:#9aa5b8; --line:#384156;
+  --accent:#4cc3d9; --accent-ink:#0c1a20;
+  --tank:#6a9ef2; --heal:#4fc683; --dps:#ef6970; --any:#d7b45a;
+  --warn-bg:#3b2f16; --warn-ink:#f5cf7a;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif;line-height:1.55}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.45em .9em}
+button:disabled{cursor:not-allowed;opacity:.45}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+select,input[type=text],input[type=number]{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:.35em .5em;min-width:0}
+
+.top{display:flex;align-items:center;gap:20px;padding:12px 24px;border-bottom:1px solid var(--line);background:var(--panel);
+  position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+.top h1{font-family:"Dela Gothic One","Zen Kaku Gothic New",sans-serif;font-weight:400;font-size:1.2rem;margin:0;letter-spacing:.02em}
+.tabs{display:flex;background:var(--panel2);border-radius:10px;padding:3px;gap:3px}
+.tabs button{border:0;background:transparent;padding:.4em 1.4em;border-radius:8px;font-weight:700;color:var(--sub)}
+.tabs button[aria-selected="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.15)}
+
+main{max-width:1800px;margin:0 auto;padding:18px 24px 48px}
+
+/* 抽選画面 */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin-bottom:14px}
+.bar label{display:flex;align-items:center;gap:8px;font-weight:700}
+.bar select{font-weight:500;max-width:min(70vw,420px)}
+.note{color:var(--sub);font-size:.92rem}
+.bar-actions{margin-left:auto;display:flex;gap:10px}
+.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:700;font-size:1.15rem;padding:.65em 1.8em;border-radius:10px}
+.warn{background:var(--warn-bg);color:var(--warn-ink);border-radius:10px;padding:12px 16px;margin-bottom:14px}
+.warn p{margin:.15em 0}
+
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (min-width:1280px){.cards{grid-template-columns:repeat(8,minmax(0,1fr))}}
+@media (max-width:640px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.card{container-type:inline-size;background:var(--panel);border-radius:12px;border-top:6px solid var(--tone);
+  padding:10px 10px 12px;display:flex;flex-direction:column;gap:8px;transition:border-color .2s}
+.card[data-tone="tank"]{--tone:var(--tank)}
+.card[data-tone="heal"]{--tone:var(--heal)}
+.card[data-tone="dps"]{--tone:var(--dps)}
+.card[data-tone="any"]{--tone:var(--any)}
+.slot{display:flex;align-items:baseline;gap:8px;font-weight:700}
+.slot-no{color:var(--sub)}
+.slot-cat{color:var(--tone)}
+.reel{position:relative;background:var(--panel2);border-radius:8px;overflow:hidden;height:2.3em}
+.reel .strip{position:absolute;inset:0;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 24%,#000 76%,transparent 100%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 24%,#000 76%,transparent 100%)}
+.reel span{position:absolute;left:4px;right:4px;top:50%;height:1.3em;line-height:1.3em;margin-top:-.65em;
+  text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;will-change:transform}
+.reel.fast span{text-shadow:0 .24em 0 color-mix(in srgb,currentColor 28%,transparent),0 -.24em 0 color-mix(in srgb,currentColor 28%,transparent)}
+.reel.stopped span{transition:opacity .35s}
+.reel.stopped span:not(:nth-child(2)){opacity:0 !important}
+.reel.person{font-weight:700;font-size:clamp(1rem,11cqi,1.9rem)}
+.reel.job{font-family:"BIZ UDPGothic","Zen Kaku Gothic New","Hiragino Sans",sans-serif;font-weight:700;
+  font-size:clamp(1.1rem,11.5cqi,2.4rem);color:var(--tone)}
+.reel.job span{left:.62em;right:.62em}
+.reroll{position:absolute;right:.12em;top:50%;transform:translateY(-50%);z-index:2;
+  font-family:system-ui,sans-serif;font-size:.5em;line-height:1;width:1.1em;height:1.1em;padding:0;
+  border:0;border-radius:50%;background:transparent;color:var(--sub);opacity:.4;display:grid;place-items:center}
+.reroll:hover:not(:disabled),.reroll:focus-visible{opacity:1}
+.reroll:disabled{opacity:0;pointer-events:none}
+.reroll.turning{animation:turn .5s ease-out}
+@keyframes turn{from{transform:translateY(-50%) rotate(0)}to{transform:translateY(-50%) rotate(360deg)}}
+.range{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.range input{width:min(320px,60vw)}
+.range output{font-weight:700;min-width:3.5em}
+
+/* 設定画面 */
+.panel{background:var(--panel);border-radius:12px;padding:16px 18px 18px;margin-bottom:16px}
+.panel h2{font-size:1.05rem;margin:0 0 12px}
+.panel h3{font-size:.92rem;margin:12px 0 6px;color:var(--sub)}
+.members{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px 12px}
+.members label,.slots label{display:flex;align-items:center;gap:8px}
+.members label span,.slots label span{color:var(--sub);font-weight:700;white-space:nowrap;min-width:3.2em}
+.members input,.slots select{flex:1}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-bottom:12px}
+.row input[type=text]{flex:1;min-width:200px}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border-width:2px;border-color:var(--tone);font-weight:700;padding:.3em .8em;border-radius:999px}
+.chip[data-tone="tank"]{--tone:var(--tank)}
+.chip[data-tone="heal"]{--tone:var(--heal)}
+.chip[data-tone="dps"]{--tone:var(--dps)}
+.chip[aria-pressed="false"]{border-color:var(--line);color:var(--sub);text-decoration:line-through;font-weight:400}
+.check{display:inline-flex;align-items:center;gap:8px;font-weight:700}
+.check input{width:1.1em;height:1.1em}
+details summary{cursor:pointer;font-weight:700;font-size:1.05rem}
+.table-wrap{overflow-x:auto;margin-top:12px}
+table{border-collapse:collapse;width:100%;min-width:520px}
+td,th{padding:5px 6px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--sub);font-weight:700;font-size:.88rem}
+td input[type=text]{width:100%}
+.danger{color:var(--dps)}
+.hint{color:var(--sub);font-size:.88rem;margin:.2em 0 .8em}
+
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+  background:var(--ink);color:var(--bg);padding:.6em 1.2em;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw}
+#toast.show{opacity:1}
+
+@media (max-width:640px){
+  .top{padding:10px 14px;gap:12px}
+  main{padding:14px 12px 40px}
+  .bar-actions{margin-left:0;width:100%}
+  .bar-actions .primary{flex:1}
+}
+@media (prefers-reduced-motion: reduce){.card{transition:none}.reroll.turning{animation:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>ジョブシャッフル</h1>
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tabDraw" aria-selected="true" data-view="draw">抽選</button>
+    <button role="tab" id="tabSetup" aria-selected="false" data-view="setup">設定</button>
+  </nav>
+</header>
+
+<main>
+  <section id="view-draw">
+    <div class="bar">
+      <label>構成 <select id="drawPreset"></select></label>
+      <span class="note" id="drawNote"></span>
+      <div class="bar-actions">
+        <button id="skipBtn" hidden>残りを全部止める</button>
+        <button id="drawBtn" class="primary">抽選する</button>
+      </div>
+    </div>
+    <div id="drawWarn" class="warn" hidden></div>
+    <div id="cards" class="cards"></div>
+  </section>
+
+  <section id="view-setup" hidden>
+    <div id="setupWarn" class="warn" hidden></div>
+    <div class="panel">
+      <h2>メンバー</h2>
+      <div class="members" id="members"></div>
+    </div>
+    <div class="panel">
+      <h2>パーティ構成</h2>
+      <div id="presetEditor"></div>
+    </div>
+    <div class="panel">
+      <h2>除外設定</h2>
+      <p class="hint">押したジョブは全員共通で抽選から外れます。</p>
+      <div id="exclude"></div>
+    </div>
+    <div class="panel">
+      <h2>リール演出</h2>
+      <div id="reelSetting"></div>
+    </div>
+    <div class="panel">
+      <details id="jobsDetails">
+        <summary>ジョブ一覧の編集</summary>
+        <div id="jobsTable"></div>
+      </details>
+    </div>
+    <div class="panel">
+      <h2>初期化</h2>
+      <p class="hint">メンバー名・構成プリセット・ジョブ一覧・除外設定をすべて最初の状態に戻します。</p>
+      <button id="resetBtn" class="danger">すべて初期状態に戻す</button>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ---------- マスタ定義 ---------- */
+const ROLES = {
+  tank:{label:'タンク',tdh:'T'}, ph:{label:'PH',tdh:'H'}, bh:{label:'BH',tdh:'H'},
+  melee:{label:'メレー',tdh:'D'}, ranged:{label:'レンジ',tdh:'D'}, caster:{label:'キャスター',tdh:'D'}
+};
+const TDH = {T:'タンク',H:'ヒーラー',D:'DPS'};
+const TONE = {T:'tank',H:'heal',D:'dps'};
+const CATS = [
+  {id:'tank',label:'タンク',group:'role',tone:'tank'},
+  {id:'ph',label:'PH',group:'role',tone:'heal'},
+  {id:'bh',label:'BH',group:'role',tone:'heal'},
+  {id:'melee',label:'メレー',group:'role',tone:'dps'},
+  {id:'ranged',label:'レンジ',group:'role',tone:'dps'},
+  {id:'caster',label:'キャスター',group:'role',tone:'dps'},
+  {id:'T',label:'タンク',group:'tdh',tone:'tank'},
+  {id:'H',label:'ヒーラー',group:'tdh',tone:'heal'},
+  {id:'D',label:'DPS',group:'tdh',tone:'dps'},
+  {id:'any',label:'何でもアリ',group:'any',tone:'any'}
+];
+const CAT = Object.fromEntries(CATS.map(c=>[c.id,c]));
+const SLOTS = 8;
+const KEY = 'ff14-job-shuffle-v1';
+
+function matches(job,cat){
+  if(cat==='any') return true;
+  if(cat in TDH) return job.tdh===cat;
+  return job.role===cat;
+}
+
+function defaultState(){
+  const jobs = [
+    ['ナイト','tank'],['戦士','tank'],['暗黒騎士','tank'],['ガンブレイカー','tank'],
+    ['白魔道士','ph'],['占星術師','ph'],['学者','bh'],['賢者','bh'],
+    ['モンク','melee'],['竜騎士','melee'],['忍者','melee'],['侍','melee'],['リーパー','melee'],['ヴァイパー','melee'],
+    ['吟遊詩人','ranged'],['機工士','ranged'],['踊り子','ranged'],
+    ['黒魔道士','caster'],['召喚士','caster'],['赤魔道士','caster'],['ピクトマンサー','caster']
+  ].map(([name,role],i)=>({id:'d'+i,name,role,tdh:ROLES[role].tdh,on:true}));
+  return {
+    members:Array(SLOTS).fill(''),
+    jobs,
+    presets:[
+      {id:'p1',name:'デフォルト構成',slots:['tank','tank','ph','bh','melee','melee','ranged','caster']},
+      {id:'p2',name:'ロールのみ指定',slots:['T','T','H','H','D','D','D','D']}
+    ],
+    presetId:'p1',
+    allowDup:false,
+    stopSec:1.8
+  };
+}
+
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw){
+      const s = JSON.parse(raw);
+      if(s && Array.isArray(s.jobs) && Array.isArray(s.presets) && s.presets.length && Array.isArray(s.members)){
+        s.members = Array.from({length:SLOTS},(_,i)=>typeof s.members[i]==='string'?s.members[i]:'');
+        s.presets.forEach(p=>{p.slots = Array.from({length:SLOTS},(_,i)=>CAT[p.slots&&p.slots[i]]?p.slots[i]:'any')});
+        s.jobs = s.jobs.filter(j=>j&&j.id&&ROLES[j.role]).map(j=>({...j,tdh:TDH[j.tdh]?j.tdh:ROLES[j.role].tdh,on:j.on!==false}));
+        s.allowDup = !!s.allowDup;
+        s.stopSec = +s.stopSec||1.8;
+        return s;
+      }
+    }
+  }catch(e){}
+  return defaultState();
+}
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+
+let state = load();
+let result = Array(SLOTS).fill(null);   // {m:メンバー番号, j:ジョブID}
+let spinning = false;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const REEL_K = [-1,0,1,2];   // 窓の中に並べる帯のコマ（0が中央）
+
+/* ---------- ユーティリティ ---------- */
+const $ = id=>document.getElementById(id);
+function h(tag,props={},...kids){
+  const e=document.createElement(tag); let val;
+  for(const [k,v] of Object.entries(props)){
+    if(k==='class') e.className=v;
+    else if(k==='text') e.textContent=v;
+    else if(k==='value') val=v;
+    else if(k==='dataset') Object.assign(e.dataset,v);
+    else if(k.startsWith('on')) e.addEventListener(k.slice(2),v);
+    else if(v===true) e.setAttribute(k,'');
+    else if(v!==false && v!=null) e.setAttribute(k,v);
+  }
+  for(const c of kids.flat()){ if(c==null||c===false) continue; e.append(c.nodeType?c:document.createTextNode(c)); }
+  if(val!==undefined) e.value=val;
+  return e;
+}
+const pick = a=>a[(Math.random()*a.length)|0];
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
+const range = n=>[...Array(n).keys()];
+const preset = ()=>state.presets.find(p=>p.id===state.presetId)||state.presets[0];
+const jobById = id=>state.jobs.find(j=>j.id===id);
+const memberName = i=>(state.members[i]||'').trim()||`メンバー${i+1}`;
+const pool = (cat,exclude)=>state.jobs.filter(j=>j.on&&matches(j,cat)&&!(exclude&&exclude.has(j.id)));
+let toastTimer;
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2600); }
+
+/* ---------- 詰みチェック（D-08） ---------- */
+function hasMatching(cands){
+  const owner=new Map();
+  const tryK=(i,seen)=>{
+    for(const j of cands[i]){
+      if(seen.has(j)) continue; seen.add(j);
+      if(!owner.has(j) || tryK(owner.get(j),seen)){ owner.set(j,i); return true; }
+    }
+    return false;
+  };
+  return cands.every((_,i)=>tryK(i,new Set()));
+}
+function precheck(){
+  const slots=preset().slots, issues=[];
+  const cand=slots.map(c=>pool(c));
+  slots.forEach((c,i)=>{ if(!cand[i].length) issues.push(`${i+1}枠目（${CAT[c].label}）で引けるジョブがありません。`); });
+  if(!issues.length && !state.allowDup){
+    const seen=new Set();
+    for(const c of slots){
+      if(seen.has(c)) continue; seen.add(c);
+      const set=new Set(pool(c).map(j=>j.id));
+      const need=slots.filter((s,i)=>cand[i].every(j=>set.has(j.id))).length;
+      if(need>set.size) issues.push(`「${CAT[c].label}」に収まる枠が${need}つありますが、引けるジョブは${set.size}つです。`);
+    }
+    if(!issues.length && !hasMatching(cand.map(a=>a.map(j=>j.id))))
+      issues.push('今の除外設定では、8枠すべてに別々のジョブを割り当てられません。');
+  }
+  return issues;
+}
+function renderWarn(el){
+  const issues=precheck();
+  el.hidden=!issues.length; el.replaceChildren();
+  if(issues.length){
+    el.append(h('p',{},h('strong',{text:'このままでは抽選できません'})));
+    issues.forEach(m=>el.append(h('p',{text:m})));
+    el.append(h('p',{text:state.allowDup?'除外を減らすか、枠の区分を変えてください。':'除外を減らすか、枠の区分を変えるか、ジョブ重複ありに切り替えてください。'}));
+  }
+  return issues;
+}
+
+/* ---------- 抽選ロジック ---------- */
+// 絞り込みの厳しい枠から順に引く（表示順は構成どおり）
+function drawJobsFor(slotIdxs,fixedUsed){
+  const slots=preset().slots;
+  for(let t=0;t<300;t++){
+    const used=new Set(state.allowDup?[]:fixedUsed);
+    const rem=[...slotIdxs], out={};
+    let ok=true;
+    while(rem.length){
+      shuffle(rem);
+      let best=-1,bc=null;
+      rem.forEach((s,k)=>{
+        const c=pool(slots[s],state.allowDup?null:used);
+        if(bc===null||c.length<bc.length){best=k;bc=c;}
+      });
+      if(!bc.length){ok=false;break;}
+      const j=pick(bc), s=rem[best];
+      out[s]=j.id; if(!state.allowDup) used.add(j.id);
+      rem.splice(best,1);
+    }
+    if(ok) return out;
+  }
+  return null;
+}
+
+/* ---------- リール演出（D-06 改訂：回転帯を手動で1枠ずつ止める） ---------- */
+// mode: idle=抽選前/完了, stopping=回転中, next=次段階待ち
+let mode='idle', group=null, nextResolve=null, active=[], rafId=0;
+const V0=16;          // 最高速（コマ/秒）
+const ACCEL=0.35;     // 回り始めの加速時間（秒）
+const BOUNCE_T=0.28;  // バウンスの時間（秒）
+const OVER=0.14;      // 行き過ぎる量（コマ）
+const TAIL=0.04;      // 減速終盤のじわじわ感（終点直前に残す速度の割合）
+const ALL_GAP=0.15;   // 「残りを全部止める」の時間差（秒）
+const STOP_MIN=0.5, STOP_MAX=8;
+const clampStop=v=>Math.round(Math.min(STOP_MAX,Math.max(STOP_MIN,+v||1.8))*10)/10;
+const stopSec=()=>clampStop(state.stopSec);
+const mod=(n,m)=>((n%m)+m)%m;
+const ease=u=>(1-TAIL)*(1-Math.pow(1-u,4))+TAIL*u;
+
+function makeReel(el,pool_,final,onLand){
+  const base=pool_.length?pool_:[final];
+  let seq=[]; while(seq.length<24) seq=seq.concat(shuffle([...base]));
+  return {el,spans:[...el.querySelectorAll('span')],seq,M:seq.length,final,onLand,
+    phase:'accel',p:(Math.random()*seq.length)|0,v:0,t0:null,last:null,decelAt:null,landed:false};
+}
+function renderReel(r){
+  const b=Math.floor(r.p);
+  r.spans.forEach((s,i)=>{
+    const n=b+REEL_K[i], y=r.p-n;
+    s.textContent=r.seq[mod(n,r.M)];
+    s.style.transform=`translateY(${(y*100).toFixed(2)}%)`;
+    s.style.opacity=String(Math.max(0,1-Math.abs(y)*0.5));
+  });
+  r.el.classList.toggle('fast',!reduced&&r.v>6);
+}
+function startDecel(r,now){
+  const D1=stopSec()-BOUNCE_T;
+  const v=Math.max(r.v,4);
+  const d0=Math.max(v*D1/(4-3*TAIL),4);
+  r.phase='decel'; r.td=now; r.D1=D1; r.p0=r.p;
+  r.T=Math.ceil(r.p+d0); r.d=r.T-r.p;
+  r.seq[mod(r.T,r.M)]=r.final;   // 終点に結果を置く（逆算）
+}
+function landReel(r){
+  r.landed=true;
+  r.el.classList.remove('fast');
+  r.el.classList.add('stopped');
+  r.onLand&&r.onLand();
+  const g=r.group;
+  if(g.reels.every(x=>x.landed)){ if(group===g) group=null; g.resolve(); }
+}
+function loop(now){
+  for(const r of active){
+    if(r.t0===null){ r.t0=now; r.last=now; }
+    if(r.decelAt!==null && now>=r.decelAt && (r.phase==='accel'||r.phase==='spin')) startDecel(r,now);
+    const dt=Math.min(0.05,(now-r.last)/1000); r.last=now;
+    if(r.phase==='accel'){
+      r.v=V0*Math.min(1,(now-r.t0)/1000/ACCEL); r.p+=r.v*dt;
+      if(r.v>=V0) r.phase='spin';
+    }else if(r.phase==='spin'){
+      r.v=V0; r.p+=V0*dt;
+    }else if(r.phase==='decel'){
+      const u=(now-r.td)/1000/r.D1;
+      if(u>=1){ r.p=r.T; r.v=0; r.phase='bounce'; r.tb=now; }
+      else{ const np=r.p0+r.d*ease(u); r.v=dt>0?(np-r.p)/dt:r.v; r.p=np; }
+    }else if(r.phase==='bounce'){
+      const s=(now-r.tb)/1000/BOUNCE_T;
+      if(s>=1){ r.p=r.T; r.phase='done'; }
+      else r.p=r.T+OVER*Math.sin(Math.PI*s)*(1-0.5*s);
+    }
+    renderReel(r);
+  }
+  active.filter(r=>r.phase==='done'&&!r.landed).forEach(landReel);
+  active=active.filter(r=>!r.landed);
+  rafId=active.length?requestAnimationFrame(loop):0;
+}
+// items は左から順に並べて渡す。すべて止まると解決する
+function spin(items){
+  return new Promise(resolve=>{
+    if(!items.length) return resolve();
+    const g={resolve,reels:[]};
+    items.forEach(it=>{
+      it.el.classList.remove('stopped');
+      const r=makeReel(it.el,it.pool,it.final,it.onLand); r.group=g;
+      g.reels.push(r); active.push(r);
+    });
+    group=g;
+    if(!rafId) rafId=requestAnimationFrame(loop);
+    setMode('stopping');
+  });
+}
+function stopNext(){
+  if(!group) return;
+  const r=group.reels.find(x=>x.decelAt===null&&!x.landed);
+  if(r) r.decelAt=performance.now();
+}
+function stopAll(){
+  if(!group) return;
+  const now=performance.now(); let k=0;
+  group.reels.forEach(r=>{ if(r.decelAt===null&&!r.landed) r.decelAt=now+(k++)*ALL_GAP*1000; });
+}
+function waitNext(label){
+  return new Promise(r=>{ nextResolve=r; setMode('next',label); });
+}
+
+let cardEls=[];
+function landJob(i,job){
+  cardEls[i].card.dataset.tone=TONE[job.tdh];
+}
+
+async function runFull(){
+  if(spinning||precheck().length) return;
+  const slots=preset().slots;
+  const jobs=drawJobsFor(range(SLOTS),[]);
+  if(!jobs){ toast('抽選できる組み合わせが見つかりませんでした。除外設定を見直してください。'); return; }
+  const order=shuffle(range(SLOTS));
+  result=Array(SLOTS).fill(null);
+  renderCards();
+  setBusy(true);
+  result=order.map((m,i)=>({m,j:jobs[i]}));
+  const names=range(SLOTS).map(memberName);
+  await spin(slots.map((c,i)=>({el:cardEls[i].person,pool:names,final:memberName(order[i])})));
+  await waitNext('ジョブの抽選へ');
+  await spin(slots.map((c,i)=>{
+    const job=jobById(jobs[i]);
+    return {el:cardEls[i].job,pool:pool(c).map(j=>j.name),final:job.name,onLand:()=>landJob(i,job)};
+  }));
+  setBusy(false);
+}
+
+// 引き直し（D-07 改訂）：ジョブのみ
+async function redo(i){
+  if(spinning||!result[i]) return;
+  const cat=preset().slots[i];
+  const others=new Set(state.allowDup?[]:result.filter((r,k)=>k!==i&&r).map(r=>r.j));
+  const opts=pool(cat,others).filter(j=>j.id!==result[i].j);
+  if(!opts.length){ toast(`${i+1}枠目で、ほかに引けるジョブがありません。`); return; }
+  const newJob=pick(opts);
+  setBusy(true);
+  result[i].j=newJob.id;
+  await spin([{el:cardEls[i].job,pool:pool(cat).map(j=>j.name),final:newJob.name,onLand:()=>landJob(i,newJob)}]);
+  setBusy(false);
+}
+
+function setMode(m,label){
+  mode=m;
+  const btn=$('drawBtn');
+  if(m==='stopping'){ btn.textContent='止める'; btn.disabled=false; }
+  else if(m==='next'){ btn.textContent=label; btn.disabled=false; }
+  else { btn.textContent='抽選する'; btn.disabled=precheck().length>0; }
+  $('skipBtn').hidden=m!=='stopping';
+}
+function setBusy(b){
+  spinning=b;
+  if(!b) setMode('idle');
+  $('drawPreset').disabled=b;
+  $('tabSetup').disabled=b;
+  cardEls.forEach((c,i)=>c.btns.forEach(btn=>btn.disabled=b||!result[i]));
+}
+function mainAction(){
+  if(mode==='stopping') stopNext();
+  else if(mode==='next'){ const r=nextResolve; nextResolve=null; r&&r(); }
+  else runFull();
+}
+
+/* ---------- 抽選画面 ---------- */
+function reelDom(cls,text){
+  const el=h('div',{class:'reel '+cls},h('div',{class:'strip'},REEL_K.map(()=>h('span'))));
+  el.querySelectorAll('span')[1].textContent=text;
+  return el;
+}
+function presetOptions(sel){
+  sel.replaceChildren(...state.presets.map(p=>h('option',{value:p.id,text:p.name})));
+  sel.value=preset().id;
+}
+function renderDraw(){
+  presetOptions($('drawPreset'));
+  const off=state.jobs.filter(j=>!j.on).length;
+  $('drawNote').textContent=`ジョブ重複${state.allowDup?'あり':'なし'}／除外${off}ジョブ`;
+  const issues=renderWarn($('drawWarn'));
+  if(mode==='idle') $('drawBtn').disabled=issues.length>0;
+  renderCards();
+}
+function renderCards(){
+  if(spinning) return;
+  const slots=preset().slots;
+  cardEls=[];
+  $('cards').replaceChildren(...slots.map((cat,i)=>{
+    const r=result[i], job=r&&jobById(r.j);
+    const person=reelDom('person',r?memberName(r.m):'—');
+    const jobEl=reelDom('job',job?job.name:(r?'（削除済み）':'—'));
+    const btn=h('button',{class:'reroll',text:'↻','aria-label':`${i+1}枠目のジョブを引き直す`,title:'ジョブを引き直す',disabled:!r,
+      onclick:e=>{ const b=e.currentTarget; b.classList.remove('turning'); void b.offsetWidth; b.classList.add('turning'); redo(i); }});
+    jobEl.append(btn);
+    const card=h('article',{class:'card',dataset:{tone:job?TONE[job.tdh]:CAT[cat].tone}},
+      h('div',{class:'slot'},h('span',{class:'slot-no',text:String(i+1)}),h('span',{class:'slot-cat',text:CAT[cat].label})),
+      person,jobEl);
+    cardEls.push({card,person,job:jobEl,btns:[btn]});
+    return card;
+  }));
+}
+
+/* ---------- 設定画面 ---------- */
+function catSelect(value,onchange){
+  const s=h('select',{onchange:e=>onchange(e.target.value)},
+    h('optgroup',{label:'細分ロール'},CATS.filter(c=>c.group==='role').map(c=>h('option',{value:c.id,text:c.label}))),
+    h('optgroup',{label:'TDH区分'},CATS.filter(c=>c.group==='tdh').map(c=>h('option',{value:c.id,text:c.label}))),
+    h('optgroup',{label:'その他'},h('option',{value:'any',text:'何でもアリ'})));
+  s.value=value; return s;
+}
+function changed(){ save(); renderDraw(); renderWarn($('setupWarn')); }
+
+function renderMembers(){
+  $('members').replaceChildren(...range(SLOTS).map(i=>h('label',{},h('span',{text:`${i+1}人目`}),
+    h('input',{type:'text',value:state.members[i],placeholder:`メンバー${i+1}`,maxlength:'20',
+      oninput:e=>{state.members[i]=e.target.value; save();}}))));
+}
+
+function renderPresetEditor(){
+  const p=preset();
+  const sel=h('select',{onchange:e=>{state.presetId=e.target.value; result=Array(SLOTS).fill(null); renderPresetEditor(); changed();}});
+  presetOptions(sel);
+  $('presetEditor').replaceChildren(
+    h('div',{class:'row'},
+      h('label',{class:'check'},'編集するプリセット ',sel),
+      h('button',{text:'複製して新しく作る',onclick:()=>{
+        const np={id:'p'+Date.now(),name:p.name+'（コピー）',slots:[...p.slots]};
+        state.presets.push(np); state.presetId=np.id; result=Array(SLOTS).fill(null);
+        renderPresetEditor(); changed(); toast('プリセットを複製しました');
+      }}),
+      h('button',{class:'danger',text:'このプリセットを削除',disabled:state.presets.length<=1,onclick:()=>{
+        if(!confirm(`「${p.name}」を削除しますか？`)) return;
+        state.presets=state.presets.filter(x=>x.id!==p.id); state.presetId=state.presets[0].id;
+        result=Array(SLOTS).fill(null); renderPresetEditor(); changed();
+      }})),
+    h('div',{class:'row'},
+      h('label',{class:'check',style:'flex:1'},'名前',h('input',{type:'text',value:p.name,maxlength:'40',
+        oninput:e=>{p.name=e.target.value||'名前なし'; save(); presetOptions($('drawPreset')); presetOptions(sel);}}))),
+    h('div',{class:'slots'},p.slots.map((c,i)=>h('label',{},h('span',{text:`${i+1}枠目`}),
+      catSelect(c,v=>{p.slots[i]=v; result=Array(SLOTS).fill(null); changed();}))))
+  );
+}
+
+function renderExclude(){
+  const groups=Object.entries(ROLES).map(([rid,r])=>{
+    const jobs=state.jobs.filter(j=>j.role===rid);
+    if(!jobs.length) return null;
+    return h('div',{},h('h3',{text:r.label}),h('div',{class:'chips'},jobs.map(j=>
+      h('button',{class:'chip',dataset:{tone:TONE[j.tdh]},'aria-pressed':String(j.on),text:j.name,
+        onclick:()=>{j.on=!j.on; renderExclude(); changed();}}))));
+  });
+  const on=state.jobs.filter(j=>j.on).length;
+  $('exclude').replaceChildren(
+    h('div',{class:'row'},
+      h('span',{class:'note',text:`抽選対象 ${on} / ${state.jobs.length} ジョブ`}),
+      h('button',{text:'すべて抽選対象に戻す',onclick:()=>{state.jobs.forEach(j=>j.on=true); renderExclude(); changed();}}),
+      h('label',{class:'check'},h('input',{type:'checkbox',checked:state.allowDup,
+        onchange:e=>{state.allowDup=e.target.checked; changed();}}),'ジョブの重複を許可する')),
+    ...groups);
+}
+
+function renderJobsTable(){
+  const roleSel=(j)=>{const s=h('select',{'aria-label':'細分ロール',onchange:e=>{j.role=e.target.value; j.tdh=ROLES[j.role].tdh; renderJobsTable(); renderExclude(); changed();}},
+    Object.entries(ROLES).map(([id,r])=>h('option',{value:id,text:r.label}))); s.value=j.role; return s;};
+  const tdhSel=(j)=>{const s=h('select',{'aria-label':'TDH区分',onchange:e=>{j.tdh=e.target.value; renderExclude(); changed();}},
+    Object.entries(TDH).map(([id,l])=>h('option',{value:id,text:l}))); s.value=j.tdh; return s;};
+  $('jobsTable').replaceChildren(
+    h('p',{class:'hint',text:'パッチでジョブが追加されたらここで足してください。細分ロールを変えるとTDH区分も合わせて変わります。'}),
+    h('div',{class:'table-wrap'},h('table',{},
+      h('thead',{},h('tr',{},h('th',{text:'ジョブ名'}),h('th',{text:'細分ロール'}),h('th',{text:'TDH区分'}),h('th',{}))),
+      h('tbody',{},state.jobs.map(j=>h('tr',{},
+        h('td',{},h('input',{type:'text',value:j.name,maxlength:'20','aria-label':'ジョブ名',
+          onchange:e=>{j.name=e.target.value.trim()||'名前なし'; renderExclude(); changed();}})),
+        h('td',{},roleSel(j)),h('td',{},tdhSel(j)),
+        h('td',{},h('button',{class:'danger',text:'削除',onclick:()=>{
+          state.jobs=state.jobs.filter(x=>x!==j); renderJobsTable(); renderExclude(); changed();}}))))))),
+    h('div',{class:'row',style:'margin-top:12px'},h('button',{text:'ジョブを追加',onclick:()=>{
+      state.jobs.push({id:'u'+Date.now(),name:'新しいジョブ',role:'melee',tdh:'D',on:true});
+      renderJobsTable(); renderExclude(); changed();
+      const inputs=$('jobsTable').querySelectorAll('tbody input'); const last=inputs[inputs.length-1]; last.focus(); last.select();
+    }}))
+  );
+}
+
+function renderReelSetting(){
+  const setVal=v=>{ state.stopSec=clampStop(v); slider.value=String(stopSec()); num.value=stopSec().toFixed(1); save(); };
+  const slider=h('input',{type:'range',id:'stopSec',min:String(STOP_MIN),max:String(STOP_MAX),step:'0.1',value:String(stopSec()),
+    oninput:e=>setVal(e.target.value)});
+  const num=h('input',{type:'number',min:String(STOP_MIN),max:String(STOP_MAX),step:'0.1',value:stopSec().toFixed(1),
+    'aria-label':'秒数',style:'width:5.5em',onchange:e=>setVal(e.target.value)});
+  $('reelSetting').replaceChildren(h('div',{class:'range'},
+    h('label',{for:'stopSec',text:'「止める」を押してから止まるまで'}),slider,h('span',{class:'check'},num,'秒')),
+    h('p',{class:'hint',text:`${STOP_MIN}〜${STOP_MAX}秒の範囲で設定できます。数値を直接入力することもできます。`}));
+}
+function renderSetup(){ renderMembers(); renderPresetEditor(); renderExclude(); renderReelSetting(); renderJobsTable(); renderWarn($('setupWarn')); }
+
+/* ---------- 画面切り替え ---------- */
+function show(view){
+  if(spinning) return;
+  $('view-draw').hidden=view!=='draw';
+  $('view-setup').hidden=view!=='setup';
+  $('tabDraw').setAttribute('aria-selected',String(view==='draw'));
+  $('tabSetup').setAttribute('aria-selected',String(view==='setup'));
+  if(view==='draw') renderDraw(); else renderSetup();
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>show(b.dataset.view)));
+$('drawPreset').addEventListener('change',e=>{ state.presetId=e.target.value; result=Array(SLOTS).fill(null); save(); renderDraw(); });
+$('drawBtn').addEventListener('click',mainAction);
+$('skipBtn').addEventListener('click',stopAll);
+// スペースキーで「止める」ボタンと同じ操作
+document.addEventListener('keydown',e=>{
+  if(e.code!=='Space'||e.repeat||$('view-draw').hidden) return;
+  const t=e.target;
+  if(t&&/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+  e.preventDefault();
+  if(t&&t.tagName==='BUTTON') t.blur();
+  if(!$('drawBtn').disabled) mainAction();
+});
+$('resetBtn').addEventListener('click',()=>{
+  if(!confirm('すべての設定を初期状態に戻しますか？')) return;
+  state=defaultState(); result=Array(SLOTS).fill(null); save(); renderSetup(); renderDraw(); toast('初期状態に戻しました');
+});
+
+renderDraw();
+</script>
+</body>
+</html>
